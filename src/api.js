@@ -1,34 +1,33 @@
 const express = require("express");
 const serverless = require("serverless-http");
-const request = require("request");
-const bodyParser = require("body-parser")
+const cors = require("cors");
+const needle = require("needle");
 
 const app = express();
 const router = express.Router();
 
-let myLimit = typeof(process.argv[2]) != 'undefined' ? process.argv[2] : '100kb';
-app.use(bodyParser.json({limit: myLimit}));
+router.all("/xbl", cors({ origin: process.env.ORIGIN }), async (req, res) => {
+  if (!req.header('Target-URL') || !req.header('X-Authorization')) {
+    return res.json(
+      {
+        "message": "A value is missing",
+        "status": "400"
+      }
+    );
+  };
 
-router.all("/xbl", (req, res) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "GET, PUT, PATCH, POST, DELETE");
-    res.header("Access-Control-Allow-Headers", req.header('access-control-request-headers'));
+  let data;
 
-    if (req.method === 'OPTIONS') {
-        res.send();
-    } else {
-        let targetURL = req.header('Target-URL');
-        if (!targetURL) {
-            res.send(500, { error: 'There is no Target-Endpoint header in the request' });
-            return;
-        }
-        request({ url: targetURL + req.url, method: req.method, json: req.body, headers: {'X-Authorization': req.header('X-Authorization')} },
-            function (error, response) {
-                if (error) {
-                    console.error('error: ' + response.statusCode)
-                }
-            }).pipe(res);
+  await needle(req.method, req.header('Target-URL'), {
+    headers: {
+      "X-Authorization": req.header('X-Authorization'),
     }
+  }
+  )
+    .then(res => data = data = res.body)
+    .catch(err => res.json(err))
+
+  res.json(data);
 });
 
 app.use(`/.netlify/functions/api`, router);
